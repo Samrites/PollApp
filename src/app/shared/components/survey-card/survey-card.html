@@ -1,0 +1,10 @@
+<button
+  [class]="cardClass"
+  type="button"
+  [routerLink]="['/single-survey', survey.id]"
+  [attr.aria-label]="'Open survey: ' + survey.title"
+>
+  <span [class]="cardClass + '__category'">{{ survey.category }}</span>
+  <span [class]="cardClass + '__title'">{{ survey.title }}</span>
+  <span [class]="cardClass + '__meta'">{{ deadlineLabel }}</span>
+</button>

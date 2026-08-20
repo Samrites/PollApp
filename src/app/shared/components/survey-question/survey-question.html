@@ -1,0 +1,25 @@
+<section class="single-survey-question-card" [attr.aria-label]="'Question ' + question.id">
+  <h2 class="single-survey-question__prompt">{{ question.id }}. {{ question.prompt }}</h2>
+  @if (question.allowMultiple) {
+    <p class="single-survey-question__hint">More than one answer is possible.</p>
+  }
+  <div class="single-survey-options">
+    @for (answer of question.answers; track $index; let answerIndex = $index) {
+      <button
+        class="single-survey-option"
+        type="button"
+        [class.is-selected]="isSelected(answerIndex)"
+        [disabled]="disabled"
+        [attr.aria-pressed]="isSelected(answerIndex)"
+        (click)="answerToggle.emit(answerIndex)"
+      >
+        <span class="single-survey-option__control" aria-hidden="true">
+          <img class="single-survey-option__checkbox single-survey-option__checkbox--base" src="./assets/checkbox.svg" alt="" />
+          <img class="single-survey-option__checkbox single-survey-option__checkbox--hover" src="./assets/checkbox-hover.svg" alt="" />
+          <img class="single-survey-option__checkbox single-survey-option__checkbox--selected" src="./assets/checkbox-click.svg" alt="" />
+        </span>
+        <span class="single-survey-option__label">{{ getAnswerLabel(answerIndex) }}. {{ answer }}</span>
+      </button>
+    }
+  </div>
+</section>

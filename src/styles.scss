@@ -1,0 +1,34 @@
+@import url('https://fonts.googleapis.com/css2?family=Mulish:wght@500;600&family=Nerko+One&family=Nokora:wght@700&display=swap');
+
+:root {
+  --color-bg: #35273a;
+  --color-accent: #ffb770;
+  --color-text: #f8f1f8;
+  --font-display: 'Nerko One', 'Comic Sans MS', cursive;
+  --font-body: 'Mulish', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body.overlay-scroll-lock {
+  overflow: hidden;
+  overscroll-behavior: none;
+}

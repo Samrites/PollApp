@@ -1,0 +1,96 @@
+<section class="question-block" [attr.aria-label]="'Question ' + questionNumber">
+  <h2 class="question-block__title">
+    {{ questionNumber }}. Question <span class="create-survey-field-title-required">*</span>
+  </h2>
+
+  <div class="question-block__input-wrap">
+    <button
+      class="delete-button question-block__delete"
+      type="button"
+      [attr.aria-label]="questionNumber === 1 ? 'Clear question 1' : 'Delete question ' + questionNumber"
+      (click)="deleteRequested.emit()"
+    >
+      <img class="delete-button__icon" src="./assets/delete-icon.svg" alt="" />
+      <img class="delete-button__icon-hover" src="./assets/delete-icon-hover.svg" alt="" />
+    </button>
+
+    <input
+      #questionInput
+      class="create-survey-input question-block__input"
+      [class.create-survey-input--error]="isPromptInvalid"
+      type="text"
+      [attr.maxlength]="maxInputLength"
+      [value]="question.prompt"
+      aria-label="Question text"
+      (input)="updatePrompt(questionInput.value)"
+    />
+  </div>
+
+  <div class="field-meta">
+    <span>Max. {{ maxInputLength }} characters</span>
+    <span>{{ question.prompt.length }}/{{ maxInputLength }}</span>
+  </div>
+  <p class="create-survey-error" [class.create-survey-error--visible]="isPromptInvalid" [attr.aria-hidden]="!isPromptInvalid">
+    Question text is required.
+  </p>
+
+  <div class="answers-block" aria-label="Answers">
+    <div class="answers-block__header">
+      <h3 class="answers-block__title">Answers <span class="create-survey-field-title-required">*</span></h3>
+      <label class="answers-toggle" [attr.for]="'allow-multiple-answers-' + question.id">
+        <input
+          class="answers-toggle__input"
+          [id]="'allow-multiple-answers-' + question.id"
+          type="checkbox"
+          [checked]="question.allowMultipleAnswers"
+          (change)="toggleMultiple($event)"
+        />
+        <span class="answers-toggle__checkbox" aria-hidden="true"></span>
+        <span class="answers-toggle__text">Allow multiple answers.</span>
+      </label>
+    </div>
+
+    <div class="answers-block__list" aria-label="Answer inputs list">
+      @for (answerIndex of question.answerFieldIndexes; track answerIndex; let index = $index) {
+        <div class="answer-row">
+          <span class="answer-row__label">{{ getAnswerLabel(index) }}.</span>
+          <input
+            #answerInput
+            class="create-survey-input answer-row__input"
+            [class.create-survey-input--error]="isAnswerInvalid(answerIndex)"
+            type="text"
+            [attr.maxlength]="maxInputLength"
+            [value]="question.answers[answerIndex]"
+            [attr.aria-label]="'Answer ' + getAnswerLabel(index)"
+            (input)="updateAnswer(answerIndex, answerInput.value)"
+          />
+          <button
+            class="delete-button"
+            type="button"
+            [attr.aria-label]="'Delete answer ' + getAnswerLabel(index)"
+            (click)="removeAnswer(answerIndex)"
+          >
+            <img class="delete-button__icon" src="./assets/delete-icon.svg" alt="" />
+            <img class="delete-button__icon-hover" src="./assets/delete-icon-hover.svg" alt="" />
+          </button>
+        </div>
+        <p class="create-survey-error" [class.create-survey-error--visible]="isAnswerInvalid(answerIndex)" [attr.aria-hidden]="!isAnswerInvalid(answerIndex)">
+          Answer {{ getAnswerLabel(index) }} is required.
+        </p>
+      }
+    </div>
+
+    <div class="answers-block__footer">
+      <button
+        class="add-answer-button"
+        type="button"
+        [disabled]="question.answerFieldIndexes.length >= maxAnswerFields"
+        (click)="addAnswer()"
+      >
+        <span class="add-answer-button__text">Add answer</span>
+        <img class="add-answer-button__icon" src="./assets/add_circle-white.svg" alt="" />
+      </button>
+      <p class="answers-block__hint">At least 2 answers are required. You can add up to {{ maxAnswerFields }}.</p>
+    </div>
+  </div>
+</section>

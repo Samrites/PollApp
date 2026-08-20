@@ -1,0 +1,200 @@
+<main class="single-survey-page">
+  @if (isCreatedOverlayVisible) {
+    <button
+      class="created-overlay"
+      type="button"
+      aria-label="Dismiss survey created message"
+      (click)="hideCreatedOverlay()"
+    >
+      <img src="./assets/Overlay.svg" alt="Survey created" />
+    </button>
+  }
+
+  <section class="single-survey-layout">
+    <div class="single-survey-layout__header">
+      <a
+        class="single-survey-logo-link"
+        [routerLink]="['/']"
+        aria-label="Go to home page"
+      >
+        <img
+          class="single-survey-logo"
+          src="./assets/logo-purple.svg"
+          alt="Poll App logo"
+        />
+      </a>
+
+      <button
+        class="single-survey-create-button"
+        type="button"
+        aria-label="Create survey"
+        (click)="openCreateSurveyDialog()"
+      >
+        Create survey
+      </button>
+    </div>
+
+    <div class="single-survey-layout__content">
+      @if (survey; as currentSurvey) {
+        <section
+          class="single-survey-surface"
+          aria-label="Single survey surface"
+        >
+          <span class="single-survey-status-badge">
+            {{ isPastSurvey ? 'Ended' : 'Published' }}
+          </span>
+
+          <section
+            class="single-survey-question"
+            aria-label="Survey question"
+          >
+            <p class="single-survey-question__category">
+              Category: {{ currentSurvey.category }}
+            </p>
+
+            <h1 class="single-survey-question__title">
+              {{ currentSurvey.title }}
+            </h1>
+
+            <p class="single-survey-question__description">
+              {{ currentSurvey.description }}
+            </p>
+
+            <div class="single-survey-question-grid">
+              @for (question of currentSurvey.questions; track question.id) {
+                <app-survey-question
+                  [question]="question"
+                  [selectedAnswers]="selectedAnswers[question.id] ?? []"
+                  [disabled]="isVotingDisabled"
+                  (answerToggle)="toggleAnswer(question.id, $event)"
+                />
+              }
+            </div>
+          </section>
+
+          @if (!isPastSurvey) {
+            <div class="single-survey-surface__actions">
+              @if (hasCompletedSurvey) {
+                <p class="single-survey-completed-message">
+                  You have already completed this survey.
+                </p>
+              } @else {
+                <button
+                  class="single-survey-complete-button"
+                  type="button"
+                  aria-label="Complete survey"
+                  [disabled]="!canCompleteSurvey"
+                  (click)="completeSurvey()"
+                >
+                  Complete survey
+                </button>
+              }
+            </div>
+          }
+        </section>
+
+        <aside
+          class="single-survey-results"
+          aria-label="Survey results"
+          [class.is-collapsed]="isResultsToggleVisible && !isResultsOpen"
+        >
+          @if (isResultsToggleVisible) {
+            <button
+              class="single-survey-results-toggle"
+              type="button"
+              [attr.aria-expanded]="isResultsOpen"
+              [attr.aria-label]="
+                isResultsOpen ? 'Close results' : 'Open results'
+              "
+              (click)="toggleResults()"
+            >
+              <span class="single-survey-results-toggle__text">
+                {{ isResultsOpen ? 'Close results' : 'Open results' }}
+              </span>
+
+              <span
+                class="single-survey-results-toggle__arrow"
+                aria-hidden="true"
+                [class.is-collapsed]="!isResultsOpen"
+              ></span>
+            </button>
+          }
+
+          @if (isResultsOpen || !isResultsToggleVisible) {
+            <h2 class="single-survey-results__title">
+              Survey results
+              <span class="single-survey-results__live">LIVE</span>
+            </h2>
+
+            @if (!hasPreviewResults) {
+              <p class="single-survey-results__description">
+                Results will be shown here after participants complete the
+                survey.
+              </p>
+
+              <p class="single-survey-results__empty">
+                There are no answers yet.
+              </p>
+            } @else {
+              <div class="single-survey-results-list">
+                @for (question of currentSurvey.questions; track question.id) {
+                  <section class="single-survey-results-question">
+                    <h3 class="single-survey-results-question__title">
+                      {{ question.id }}. {{ question.prompt }}
+                    </h3>
+
+                    <div class="single-survey-results-question__answers">
+                      @for (
+                        answer of question.answers;
+                        track $index;
+                        let answerIndex = $index
+                      ) {
+                        <div class="single-survey-results-answer">
+                          <p class="single-survey-results-answer__label">
+                            {{ getAnswerLabel(answerIndex) }}. {{ answer }}
+                          </p>
+
+                          <div class="single-survey-results-answer__row">
+                            <div class="single-survey-results-bar">
+                              <span
+                                class="single-survey-results-bar__fill"
+                                [style.width.%]="
+                                  getResultPercent(question.id, answerIndex)
+                                "
+                              ></span>
+                            </div>
+
+                            <span class="single-survey-results-answer__percent">
+                              {{ getResultPercent(question.id, answerIndex) }}%
+                            </span>
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  </section>
+                }
+              </div>
+            }
+          }
+        </aside>
+      } @else {
+        <section
+          class="single-survey-surface"
+          aria-label="No survey available"
+        >
+          <p class="single-survey-question__description">
+            No survey found.
+          </p>
+        </section>
+      }
+    </div>
+  </section>
+
+  @if (isCreateSurveyDialogOpen) {
+    <app-create-survey-page
+      [isDialog]="true"
+      (closeRequested)="closeCreateSurveyDialog()"
+      (surveyPublished)="handleSurveyPublished($event)"
+    />
+  }
+</main>

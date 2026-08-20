@@ -1,0 +1,149 @@
+<main class="create-survey-page" (click)="handleBackdropClick($event)">
+  <section class="create-survey-canvas" aria-label="Create survey workspace">
+    <div class="create-survey-header">
+      <div class="create-survey-header__left">
+        <span class="create-survey-status-badge">Draft</span>
+        <h1 class="create-survey-title">Create new survey</h1>
+      </div>
+      <button class="cancel-button" type="button" aria-label="Cancel" (click)="closeCreateSurvey()">
+        <span class="cancel-button__text">Cancel</span>
+        <img class="cancel-button__icon" src="./assets/close.svg" alt="" />
+      </button>
+    </div>
+
+    <div class="create-survey-form-surface">
+      <div class="create-survey-top-row">
+        <div class="create-survey-inputs">
+          <div class="create-survey-input-group">
+            <label class="create-survey-field-title" for="survey-name-input">
+              Survey name <span class="create-survey-field-title-required">*</span>
+            </label>
+            <div class="create-survey-input-row">
+              <input
+                #surveyNameInput
+                class="create-survey-input"
+                [class.create-survey-input--error]="isSurveyTitleInvalid()"
+                id="survey-name-input"
+                type="text"
+                [attr.maxlength]="maxInputLength"
+                [value]="surveyTitle"
+                aria-label="Survey title"
+                (input)="updateSurveyTitle(surveyNameInput.value)"
+              />
+              <button class="delete-button" type="button" aria-label="Clear survey input" (click)="clearField(surveyNameInput); updateSurveyTitle('')">
+                <img class="delete-button__icon" src="./assets/delete-icon.svg" alt="" />
+                <img class="delete-button__icon-hover" src="./assets/delete-icon-hover.svg" alt="" />
+              </button>
+            </div>
+            <div class="field-meta"><span>Max. {{ maxInputLength }} characters</span><span>{{ surveyTitle.length }}/{{ maxInputLength }}</span></div>
+            <p class="create-survey-error" [class.create-survey-error--visible]="isSurveyTitleInvalid()" [attr.aria-hidden]="!isSurveyTitleInvalid()">
+              Survey name is required.
+            </p>
+          </div>
+
+          <div class="create-survey-input-group create-survey-input-group--split">
+            <label class="create-survey-field-title" for="survey-end-date-input">
+              Set end date <span class="create-survey-field-title-optional">(optional)</span>
+            </label>
+            <div class="create-survey-input-row create-survey-input-row--split">
+              <div class="create-survey-input-row__left">
+                <input
+                  #endDateInput
+                  class="create-survey-input create-survey-input--short"
+                  id="survey-end-date-input"
+                  type="date"
+                  aria-label="Set end date optional"
+                  [min]="minEndDate"
+                  [value]="endDate"
+                  (change)="updateEndDate(endDateInput.value)"
+                />
+                <button class="delete-button" type="button" aria-label="Clear end date input" (click)="clearField(endDateInput); updateEndDate('')">
+                  <img class="delete-button__icon" src="./assets/delete-icon.svg" alt="" />
+                  <img class="delete-button__icon-hover" src="./assets/delete-icon-hover.svg" alt="" />
+                </button>
+              </div>
+
+              <div class="category-dropdown">
+                <button class="category-dropdown-button" type="button" aria-label="Choose category dropdown" [attr.aria-expanded]="isCategoryDropdownOpen" [class.is-open]="isCategoryDropdownOpen" (click)="toggleCategoryDropdown()">
+                  <span class="category-dropdown__label">{{ selectedCategory }}</span>
+                  <span class="category-dropdown__arrow" aria-hidden="true"></span>
+                </button>
+                @if (isCategoryDropdownOpen) {
+                  <div class="category-dropdown-menu" role="menu" aria-label="Category options">
+                    @for (category of categories; track category) {
+                      <button class="category-dropdown-menu__item" type="button" role="menuitem" (click)="selectCategory(category)">{{ category }}</button>
+                    }
+                  </div>
+                }
+              </div>
+            </div>
+            <p class="field-meta field-meta--single">Default: 30 days from today. You can choose another date or clear it.</p>
+          </div>
+        </div>
+
+        <section class="description-block" aria-label="Describing text optional">
+          <h2 class="description-block__title">Describing text <span class="description-block__title-optional">(optional)</span></h2>
+          <div class="description-block__input-row">
+            <textarea
+              #descriptionInput
+              class="description-block__input"
+              [attr.maxlength]="maxDescriptionLength"
+              [value]="surveyDescription"
+              aria-label="Describing text optional"
+              (input)="updateSurveyDescription(descriptionInput.value)"
+            ></textarea>
+            <button class="delete-button description-block__delete" type="button" aria-label="Clear description text" (click)="clearField(descriptionInput); updateSurveyDescription('')">
+              <img class="delete-button__icon" src="./assets/delete-icon.svg" alt="" />
+              <img class="delete-button__icon-hover" src="./assets/delete-icon-hover.svg" alt="" />
+            </button>
+          </div>
+          <div class="field-meta"><span>Max. {{ maxDescriptionLength }} characters</span><span>{{ surveyDescription.length }}/{{ maxDescriptionLength }}</span></div>
+        </section>
+      </div>
+
+      <section class="questions-section" aria-label="Question blocks">
+        <div class="questions-grid">
+          @for (question of questions; track question.id; let questionIndex = $index) {
+            <app-create-survey-question
+              [question]="question"
+              [questionNumber]="questionIndex + 1"
+              [maxAnswerFields]="maxAnswerFields"
+              [maxInputLength]="maxInputLength"
+              [showValidationErrors]="showValidationErrors"
+              (questionChange)="updateQuestion($event)"
+              (deleteRequested)="handleQuestionDelete(questionIndex)"
+            />
+          }
+
+          @if (questions.length === 1) {
+            <div class="questions-grid__single-action">
+              <button class="add-question-button" type="button" aria-label="Add new question" [disabled]="questions.length >= maxQuestions" (click)="addQuestion()">
+                <span class="add-question-button__text">Add new question</span>
+                <img class="add-question-button__icon" src="./assets/add_circle-white.svg" alt="" />
+              </button>
+            </div>
+          }
+        </div>
+
+        @if (questions.length > 1) {
+          <div class="questions-section__actions">
+            <button class="add-question-button" type="button" aria-label="Add new question" [disabled]="questions.length >= maxQuestions" (click)="addQuestion()">
+              <span class="add-question-button__text">Add new question</span>
+              <img class="add-question-button__icon" src="./assets/add_circle-white.svg" alt="" />
+            </button>
+          </div>
+        }
+      </section>
+    </div>
+
+    <div class="create-survey-footer">
+      <div class="create-survey-footer__actions">
+        <button class="create-survey-submit-button" type="button" aria-label="Publish survey" (click)="publishSurvey()">
+          <span class="create-survey-submit-button__text">Publish</span>
+          <img class="create-survey-submit-button__icon" src="./assets/check.svg" alt="" />
+        </button>
+        <p class="create-survey-end-date">Ends on {{ formattedEndDate }}</p>
+      </div>
+    </div>
+  </section>
+</main>

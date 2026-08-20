@@ -1,0 +1,209 @@
+<main class="home">
+  @if (isCreatedOverlayVisible) {
+    <button
+      class="created-overlay"
+      type="button"
+      aria-label="Dismiss survey created message"
+      (click)="hideCreatedOverlay()"
+    >
+      <img src="./assets/Overlay.svg" alt="Survey created" />
+    </button>
+  }
+
+  <div class="home__inner">
+    <img
+      class="brand-logo"
+      src="./assets/logo-orange.svg"
+      alt="PollApp logo"
+    />
+
+    <section class="hero">
+      <div class="hero__content">
+        <h1 class="hero__title">
+          <span>Collect Feedback,</span>
+          <span>Unlock Ideas</span>
+        </h1>
+
+        <p class="hero__subtitle">
+          Create and share surveys in minutes - from team events to workplace
+          culture. Collect opinions, engage your audience, and turn feedback
+          into action.
+        </p>
+
+        <div class="hero__actions">
+          <button
+            class="new-survey-button"
+            type="button"
+            aria-label="Create new survey"
+            (click)="openCreateSurveyDialog()"
+          >
+            <span class="new-survey-button__text">New survey</span>
+
+            <span
+              class="new-survey-button__icon"
+              aria-hidden="true"
+            >
+              <img
+                class="new-survey-button__icon-svg"
+                src="./assets/add_circle.svg"
+                alt=""
+              />
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div class="hero__visual" aria-hidden="true">
+        <div class="phone-logo">
+          <img
+            class="phone-logo__base"
+            src="./assets/property-phone.svg"
+            alt=""
+          />
+
+          <img
+            class="phone-logo__hover"
+            src="./assets/Property-phone-hover.svg"
+            alt=""
+          />
+        </div>
+      </div>
+    </section>
+
+    <section
+      class="surveys"
+      aria-label="Your surveys"
+    >
+      <h2 class="surveys__title">Your surveys</h2>
+
+      <div class="surveys__content">
+        <h3 class="surveys__ending">Ending soon surveys</h3>
+
+        <div
+          class="highlight-cards"
+          aria-label="Ending soon survey cards"
+        >
+          @for (survey of endingSoonSurveys; track survey.id) {
+            <article
+              class="highlight-card-item"
+              [attr.aria-label]="'Survey card: ' + survey.title"
+            >
+              <app-survey-card
+                [survey]="survey"
+                variant="highlight"
+              />
+            </article>
+          }
+        </div>
+
+        <div class="surveys-toolbar">
+          <nav aria-label="Survey filter tabs">
+            <ul class="survey-tabs">
+              <li class="survey-tabs__item">
+                <button
+                  class="survey-tab survey-tab--active"
+                  type="button"
+                  [class.is-selected]="!isPastView"
+                  (click)="isPastView = false"
+                >
+                  Active survey
+                </button>
+              </li>
+
+              <li class="survey-tabs__item">
+                <button
+                  class="survey-tab survey-tab--past"
+                  type="button"
+                  [class.is-selected]="isPastView"
+                  (click)="isPastView = true"
+                >
+                  Past survey
+                </button>
+              </li>
+            </ul>
+          </nav>
+
+          <div class="sort-menu">
+            <button
+              class="sort-menu__button"
+              type="button"
+              [class.is-open]="isSortMenuOpen"
+              [attr.aria-expanded]="isSortMenuOpen"
+              (click)="isSortMenuOpen = !isSortMenuOpen"
+            >
+              <span class="sort-menu__label">
+                Sort by categories
+              </span>
+
+              <span
+                class="sort-menu__arrow"
+                aria-hidden="true"
+              ></span>
+            </button>
+
+            @if (isSortMenuOpen) {
+              <div
+                class="sort-menu__dropdown"
+                role="menu"
+                aria-label="Sort by category"
+              >
+                <button
+                  class="sort-menu__item"
+                  type="button"
+                  role="menuitem"
+                  [class.is-selected]="selectedSortCategory === ''"
+                  (click)="selectCategory('')"
+                >
+                  All
+                </button>
+
+                @for (category of sortCategories; track category) {
+                  <button
+                    class="sort-menu__item"
+                    type="button"
+                    role="menuitem"
+                    [class.is-selected]="selectedSortCategory === category"
+                    (click)="selectCategory(category)"
+                  >
+                    {{ category }}
+                  </button>
+                }
+              </div>
+            }
+
+            @if (selectedSortCategory) {
+              <p class="sort-menu__selected">
+                {{ selectedSortCategory }}
+              </p>
+            }
+          </div>
+        </div>
+
+        <div
+          class="list-cards"
+          aria-label="Survey list cards"
+        >
+          @for (survey of visibleSurveys; track survey.id) {
+            <article
+              class="list-card-item"
+              [attr.aria-label]="'Survey card: ' + survey.title"
+            >
+              <app-survey-card
+                [survey]="survey"
+                variant="list"
+              />
+            </article>
+          }
+        </div>
+      </div>
+    </section>
+  </div>
+
+  @if (isCreateSurveyDialogOpen) {
+    <app-create-survey-page
+      [isDialog]="true"
+      (closeRequested)="closeCreateSurveyDialog()"
+      (surveyPublished)="handleSurveyPublished($event)"
+    />
+  }
+</main>
