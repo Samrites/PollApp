@@ -1,4 +1,10 @@
 <main class="create-survey-page" (click)="handleBackdropClick($event)">
+  @if (isPublishSuccessVisible) {
+    <div class="publish-success" role="status" aria-live="polite">
+      <strong>Survey published!</strong>
+      <span>Opening your new survey…</span>
+    </div>
+  }
   <section class="create-survey-canvas" aria-label="Create survey workspace">
     <div class="create-survey-header">
       <div class="create-survey-header__left">
@@ -29,6 +35,7 @@
                 [value]="surveyTitle"
                 aria-label="Survey title"
                 (input)="updateSurveyTitle(surveyNameInput.value)"
+                (blur)="markSurveyTitleTouched()"
               />
               <button class="delete-button" type="button" aria-label="Clear survey input" (click)="clearField(surveyNameInput); updateSurveyTitle('')">
                 <img class="delete-button__icon" src="./assets/delete-icon.svg" alt="" />
@@ -52,6 +59,7 @@
                   class="create-survey-input create-survey-input--short"
                   id="survey-end-date-input"
                   type="date"
+                  autocomplete="off"
                   aria-label="Set end date optional"
                   [min]="minEndDate"
                   [value]="endDate"
