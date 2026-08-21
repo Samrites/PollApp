@@ -1,11 +1,9 @@
 :host {
   display: block;
-  min-height: 100dvh;
 }
 
 .home {
   position: relative;
-  min-height: 100dvh;
   padding-inline: clamp(1.5rem, 4vw, 4rem);
   padding-bottom: clamp(2rem, 5vw, 4.5rem);
   background: var(--color-bg);
@@ -53,7 +51,6 @@
 
 .hero {
   width: 100%;
-  min-height: 100dvh;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 430px);
   gap: clamp(1.5rem, 4vw, 5rem);
@@ -344,6 +341,17 @@
   font-size: 14px;
   line-height: 1;
   color: #35273a;
+}
+
+.highlight-cards__scroll-hint {
+  display: none;
+  margin: 10px 0 0;
+  font-family: 'Mulish', var(--font-body);
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.2;
+  color: #ffcfa1;
+  text-align: left;
 }
 
 .list-cards {
@@ -731,7 +739,6 @@
   }
 
   .hero {
-    min-height: calc(100dvh - 72px);
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -805,8 +812,19 @@
   }
 
   .highlight-card-item {
-    width: min(88vw, 321px);
-    flex-basis: min(88vw, 321px);
+    width: min(74vw, 321px);
+    flex-basis: min(74vw, 321px);
+  }
+
+  .highlight-cards {
+    gap: 16px;
+    padding-right: 28px;
+    scrollbar-width: thin;
+    scrollbar-color: #ffb770 rgb(255 255 255 / 12%);
+  }
+
+  .highlight-cards__scroll-hint {
+    display: block;
   }
 
   .highlight-card {
