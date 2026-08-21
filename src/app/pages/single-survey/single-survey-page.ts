@@ -26,11 +26,13 @@ export class SingleSurveyPage implements OnDestroy {
   protected isResultsToggleVisible = false;
   protected survey: Survey | null = null;
   protected hasCompletedSurvey = false;
+  protected isVoteConfirmationVisible = false;
 
   private routeParamSubscription: Subscription | null = null;
   private unsubscribeSurveyStats: (() => void) | null = null;
   private createdOverlayTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private pendingPublishedSurveyId: number | null = null;
+  private voteConfirmationTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly route: ActivatedRoute,
@@ -56,6 +58,7 @@ export class SingleSurveyPage implements OnDestroy {
     this.routeParamSubscription?.unsubscribe();
     this.unsubscribeFromSurveyStats();
     this.clearCreatedOverlayTimer();
+    this.clearVoteConfirmationTimer();
   }
 
   protected toggleAnswer(questionId: number, answerIndex: number): void {
@@ -81,6 +84,7 @@ export class SingleSurveyPage implements OnDestroy {
       );
       this.voteState.markCompleted(this.survey.id);
       this.hasCompletedSurvey = true;
+      this.showVoteConfirmation();
       this.applyStats(stats);
       this.selectedAnswers = {};
       this.scheduleChangeDetection();
@@ -196,6 +200,20 @@ export class SingleSurveyPage implements OnDestroy {
     const id = this.pendingPublishedSurveyId;
     this.pendingPublishedSurveyId = null;
     await this.router.navigate(['/single-survey', id]);
+  }
+  private showVoteConfirmation(): void {
+    this.clearVoteConfirmationTimer();
+    this.isVoteConfirmationVisible = true;
+    this.voteConfirmationTimeoutId = setTimeout(() => {
+      this.isVoteConfirmationVisible = false;
+      this.voteConfirmationTimeoutId = null;
+      this.scheduleChangeDetection();
+    }, 2600);
+  }
+  private clearVoteConfirmationTimer(): void {
+    if (!this.voteConfirmationTimeoutId) return;
+    clearTimeout(this.voteConfirmationTimeoutId);
+    this.voteConfirmationTimeoutId = null;
   }
   private scheduleChangeDetection(): void { setTimeout(() => this.cdr.detectChanges()); }
 }

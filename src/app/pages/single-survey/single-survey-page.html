@@ -1,4 +1,15 @@
 <main class="single-survey-page">
+  @if (isVoteConfirmationVisible) {
+    <div class="vote-confirmation-overlay" role="status" aria-live="polite">
+      <div class="vote-confirmation-overlay__card">
+        <h2 class="vote-confirmation-overlay__title">Vote submitted!</h2>
+        <p class="vote-confirmation-overlay__text">
+          Thank you. Your answers are now included in the survey results.
+        </p>
+      </div>
+    </div>
+  }
+
   @if (isCreatedOverlayVisible) {
     <button
       class="created-overlay"
@@ -126,7 +137,7 @@
               <span class="single-survey-results__live">LIVE</span>
             </h2>
 
-            @if (!hasPreviewResults) {
+            @if (!hasPreviewResults && !isPastSurvey) {
               <p class="single-survey-results__description">
                 Results will be shown here after participants complete the
                 survey.
@@ -136,6 +147,12 @@
                 There are no answers yet.
               </p>
             } @else {
+              @if (isPastSurvey && totalResponses === 0) {
+                <p class="single-survey-results__description">
+                  This survey has ended. No recorded responses are available, so the result bars show 0%.
+                </p>
+              }
+
               <div class="single-survey-results-list">
                 @for (question of currentSurvey.questions; track question.id) {
                   <section class="single-survey-results-question">
