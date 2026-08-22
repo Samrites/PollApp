@@ -1,3 +1,9 @@
+/**
+ * Production environment configuration.
+ *
+ * Contains the public Supabase connection settings
+ * used by the application at runtime.
+ */
 export const environment = {
   production: true,
   supabaseUrl: 'https://lpuausmrwczuzwydwfap.supabase.co',
