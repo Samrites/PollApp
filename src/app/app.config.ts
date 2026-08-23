@@ -7,9 +7,10 @@ import { provideRouter } from '@angular/router';
 import { routes } from './app.routes';
 
 /**
- * Global application configuration.
+ * Defines the global application configuration.
  *
- * Registers browser error listeners and the application router.
+ * Registers browser error handling and the application router
+ * used throughout the PollApp application.
  */
 export const appConfig: ApplicationConfig = {
   providers: [

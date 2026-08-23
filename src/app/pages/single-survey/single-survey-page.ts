@@ -26,9 +26,9 @@ const RESULTS_MOBILE_BREAKPOINT = 740;
 /**
  * Displays the detail view of a single survey.
  *
- * The component handles answer selection, live result previews,
- * survey completion, persisted statistics, responsive result visibility,
- * and navigation to newly created surveys.
+ * Handles answer selection, result previews, survey completion,
+ * realtime statistics, responsive result visibility,
+ * and navigation to newly published surveys.
  */
 @Component({
   selector: 'app-single-survey-page',
@@ -44,21 +44,38 @@ const RESULTS_MOBILE_BREAKPOINT = 740;
 export class SingleSurveyPage implements OnDestroy {
   protected isCreatedOverlayVisible = false;
   protected isCreateSurveyDialogOpen = false;
+
   protected selectedAnswers: Partial<Record<number, number[]>> = {};
-  protected totalResponses = 0;
   protected answerCounts: Record<number, number[]> = {};
+  protected totalResponses = 0;
+
   protected isResultsOpen = true;
   protected isResultsToggleVisible = false;
+
   protected survey: Survey | null = null;
   protected hasCompletedSurvey = false;
   protected isVoteConfirmationVisible = false;
 
   private routeParamSubscription: Subscription | null = null;
   private unsubscribeSurveyStats: (() => void) | null = null;
+
   private createdOverlayTimeoutId: ReturnType<typeof setTimeout> | null = null;
-  private pendingPublishedSurveyId: number | null = null;
   private voteConfirmationTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
+  private pendingPublishedSurveyId: number | null = null;
+
+  /**
+   * Creates the single-survey page.
+   *
+   * Initializes responsive result visibility and subscribes
+   * to survey ID changes from the current route.
+   *
+   * @param route The active route containing the survey ID.
+   * @param router Angular router used for navigation.
+   * @param cdr Change detector used after asynchronous updates.
+   * @param surveyStorage Service used to load surveys and statistics.
+   * @param voteState Service used to track completed surveys.
+   */
   constructor(
     private readonly route: ActivatedRoute,
     private readonly router: Router,
@@ -67,39 +84,43 @@ export class SingleSurveyPage implements OnDestroy {
     private readonly voteState: SurveyVoteStateService,
   ) {
     this.updateResultsToggleVisibility();
-
-    this.routeParamSubscription =
-      this.route.paramMap.subscribe((params) => {
-        void this.loadSurveyById(params.get('id'));
-      });
+    this.subscribeToRouteChanges();
   }
 
   /**
    * Returns whether the currently displayed survey has already ended.
+   *
+   * @returns Whether the survey is in the past.
    */
   protected get isPastSurvey(): boolean {
     return !!this.survey && this.survey.daysLeft < 0;
   }
 
   /**
-   * Returns whether voting is disabled for the current survey.
+   * Returns whether voting is disabled.
    *
-   * Voting is disabled for past surveys and surveys that the user
-   * has already completed.
+   * Voting is disabled for past surveys and surveys
+   * that have already been completed.
+   *
+   * @returns Whether answer selection is disabled.
    */
   protected get isVotingDisabled(): boolean {
     return this.isPastSurvey || this.hasCompletedSurvey;
   }
 
   /**
-   * Returns whether result data or temporary answer selections exist.
+   * Returns whether result data or temporary selections exist.
+   *
+   * @returns Whether result preview data is available.
    */
   protected get hasPreviewResults(): boolean {
     return this.totalResponses > 0 || this.hasSelections();
   }
 
   /**
-   * Returns whether every survey question currently has a selected answer.
+   * Returns whether every question has at least one selected answer.
+   *
+   * @returns Whether the survey can be completed.
    */
   protected get canCompleteSurvey(): boolean {
     if (!this.survey) {
@@ -116,8 +137,7 @@ export class SingleSurveyPage implements OnDestroy {
    * Cleans up subscriptions and active timers.
    */
   ngOnDestroy(): void {
-    this.routeParamSubscription?.unsubscribe();
-
+    this.unsubscribeFromRouteChanges();
     this.unsubscribeFromSurveyStats();
     this.clearCreatedOverlayTimer();
     this.clearVoteConfirmationTimer();
@@ -126,9 +146,6 @@ export class SingleSurveyPage implements OnDestroy {
   /**
    * Toggles an answer selection for a survey question.
    *
-   * Multiple-answer questions allow several active answers.
-   * Single-answer questions only keep one selected answer.
-   *
    * @param questionId The ID of the survey question.
    * @param answerIndex The index of the selected answer.
    */
@@ -136,53 +153,33 @@ export class SingleSurveyPage implements OnDestroy {
     questionId: number,
     answerIndex: number,
   ): void {
-    if (!this.survey || this.isVotingDisabled) {
+    if (!this.canToggleAnswer()) {
       return;
     }
 
-    const question = this.survey.questions.find(
-      (item) => item.id === questionId,
-    );
+    const question = this.findQuestion(questionId);
 
     if (!question) {
       return;
     }
 
-    const currentAnswers =
-      this.selectedAnswers[questionId] ?? [];
-
-    const nextAnswers = question.allowMultiple
-      ? this.toggleMultipleAnswer(currentAnswers, answerIndex)
-      : this.toggleSingleAnswer(currentAnswers, answerIndex);
-
-    this.selectedAnswers = {
-      ...this.selectedAnswers,
-      [questionId]: nextAnswers,
-    };
+    this.updateAnswerSelection(
+      questionId,
+      answerIndex,
+      question.allowMultiple,
+    );
   }
 
   /**
-   * Saves the selected survey answers and marks the survey as completed.
+   * Saves the selected answers and marks the survey as completed.
    */
   protected async completeSurvey(): Promise<void> {
-    if (
-      !this.survey ||
-      this.isVotingDisabled ||
-      !this.canCompleteSurvey
-    ) {
+    if (!this.canSubmitSurvey()) {
       return;
     }
 
     try {
-      const stats = await this.saveCurrentSurveyResponse();
-
-      this.voteState.markCompleted(this.survey.id);
-      this.hasCompletedSurvey = true;
-      this.selectedAnswers = {};
-
-      this.showVoteConfirmation();
-      this.applyStats(stats);
-      this.scheduleChangeDetection();
+      await this.processSurveyCompletion();
     } catch (error) {
       console.error(
         'Could not complete survey:',
@@ -194,9 +191,6 @@ export class SingleSurveyPage implements OnDestroy {
   /**
    * Calculates the percentage for a result option.
    *
-   * Current answer selections are included as a temporary live preview
-   * before the survey is submitted.
-   *
    * @param questionId The ID of the survey question.
    * @param answerIndex The index of the answer.
    * @returns The result percentage from 0 to 100.
@@ -205,34 +199,20 @@ export class SingleSurveyPage implements OnDestroy {
     questionId: number,
     answerIndex: number,
   ): number {
-    const questionHasSelection =
-      (this.selectedAnswers[questionId]?.length ?? 0) > 0;
-
-    const previewVote =
-      this.selectedAnswers[questionId]?.includes(answerIndex)
-        ? 1
-        : 0;
-
-    const previewResponse =
-      questionHasSelection ? 1 : 0;
-
-    const total =
-      this.totalResponses + previewResponse;
+    const total = this.getPreviewTotal(questionId);
 
     if (!total) {
       return 0;
     }
 
-    const votes =
-      (this.answerCounts[questionId]?.[answerIndex] ?? 0) +
-      previewVote;
+    const votes = this.getPreviewVotes(
+      questionId,
+      answerIndex,
+    );
 
-    return Math.max(
-      0,
-      Math.min(
-        Math.round((votes / total) * 100),
-        100,
-      ),
+    return this.calculatePercentage(
+      votes,
+      total,
     );
   }
 
@@ -247,7 +227,7 @@ export class SingleSurveyPage implements OnDestroy {
   }
 
   /**
-   * Opens or closes the result panel on mobile screens.
+   * Opens or closes the results panel on mobile screens.
    */
   protected toggleResults(): void {
     if (!this.isResultsToggleVisible) {
@@ -279,10 +259,7 @@ export class SingleSurveyPage implements OnDestroy {
   protected handleSurveyPublished(survey: Survey): void {
     this.closeCreateSurveyDialog();
 
-    void this.router.navigate([
-      '/single-survey',
-      survey.id,
-    ]);
+    void this.navigateToSurvey(survey.id);
   }
 
   /**
@@ -296,7 +273,7 @@ export class SingleSurveyPage implements OnDestroy {
   }
 
   /**
-   * Updates the mobile result toggle after a viewport resize.
+   * Updates mobile result visibility after a viewport resize.
    */
   @HostListener('window:resize')
   protected onWindowResize(): void {
@@ -314,26 +291,202 @@ export class SingleSurveyPage implements OnDestroy {
   }
 
   /**
-   * Loads a survey from storage using the route parameter.
+   * Subscribes to route parameter changes.
+   */
+  private subscribeToRouteChanges(): void {
+    this.routeParamSubscription =
+      this.route.paramMap.subscribe((params) => {
+        void this.loadSurveyById(params.get('id'));
+      });
+  }
+
+  /**
+   * Removes the route parameter subscription.
+   */
+  private unsubscribeFromRouteChanges(): void {
+    this.routeParamSubscription?.unsubscribe();
+    this.routeParamSubscription = null;
+  }
+
+  /**
+   * Returns whether an answer can currently be toggled.
+   *
+   * @returns Whether answer selection is allowed.
+   */
+  private canToggleAnswer(): boolean {
+    return !!this.survey && !this.isVotingDisabled;
+  }
+
+  /**
+   * Finds a question by ID.
+   *
+   * @param questionId The question ID.
+   * @returns The matching question or undefined.
+   */
+  private findQuestion(
+    questionId: number,
+  ): Survey['questions'][number] | undefined {
+    return this.survey?.questions.find(
+      (question) => question.id === questionId,
+    );
+  }
+
+  /**
+   * Updates the selected answers for one question.
+   *
+   * @param questionId The question ID.
+   * @param answerIndex The selected answer index.
+   * @param allowMultiple Whether multiple answers are allowed.
+   */
+  private updateAnswerSelection(
+    questionId: number,
+    answerIndex: number,
+    allowMultiple: boolean,
+  ): void {
+    const currentAnswers =
+      this.selectedAnswers[questionId] ?? [];
+
+    const nextAnswers = allowMultiple
+      ? this.toggleMultipleAnswer(currentAnswers, answerIndex)
+      : this.toggleSingleAnswer(currentAnswers, answerIndex);
+
+    this.selectedAnswers = {
+      ...this.selectedAnswers,
+      [questionId]: nextAnswers,
+    };
+  }
+
+  /**
+   * Returns whether the current survey can be submitted.
+   *
+   * @returns Whether survey completion is allowed.
+   */
+  private canSubmitSurvey(): boolean {
+    return (
+      !!this.survey &&
+      !this.isVotingDisabled &&
+      this.canCompleteSurvey
+    );
+  }
+
+  /**
+   * Processes a valid survey completion.
+   */
+  private async processSurveyCompletion(): Promise<void> {
+    const stats = await this.saveCurrentSurveyResponse();
+
+    this.markSurveyCompleted();
+    this.applyStats(stats);
+
+    this.showVoteConfirmation();
+    this.scheduleChangeDetection();
+  }
+
+  /**
+   * Marks the current survey as completed locally.
+   */
+  private markSurveyCompleted(): void {
+    if (!this.survey) {
+      return;
+    }
+
+    this.voteState.markCompleted(this.survey.id);
+    this.hasCompletedSurvey = true;
+    this.selectedAnswers = {};
+  }
+
+  /**
+   * Returns the preview response total for one question.
+   *
+   * @param questionId The question ID.
+   * @returns The total responses including the current preview.
+   */
+  private getPreviewTotal(questionId: number): number {
+    const hasSelection =
+      (this.selectedAnswers[questionId]?.length ?? 0) > 0;
+
+    return this.totalResponses + (hasSelection ? 1 : 0);
+  }
+
+  /**
+   * Returns preview vote count for one answer.
+   *
+   * @param questionId The question ID.
+   * @param answerIndex The answer index.
+   * @returns The stored and preview vote count.
+   */
+  private getPreviewVotes(
+    questionId: number,
+    answerIndex: number,
+  ): number {
+    const storedVotes =
+      this.answerCounts[questionId]?.[answerIndex] ?? 0;
+
+    const previewVote =
+      this.selectedAnswers[questionId]?.includes(answerIndex)
+        ? 1
+        : 0;
+
+    return storedVotes + previewVote;
+  }
+
+  /**
+   * Calculates a bounded percentage.
+   *
+   * @param votes The vote count.
+   * @param total The response total.
+   * @returns A percentage from 0 to 100.
+   */
+  private calculatePercentage(
+    votes: number,
+    total: number,
+  ): number {
+    const percentage =
+      Math.round((votes / total) * 100);
+
+    return Math.max(
+      0,
+      Math.min(percentage, 100),
+    );
+  }
+
+  /**
+   * Loads a survey using the route parameter.
    *
    * @param idParam The route parameter containing the survey ID.
    */
   private async loadSurveyById(
     idParam: string | null,
   ): Promise<void> {
-    const id = Number(idParam);
-    const surveys =
-      await this.surveyStorage.getAllSurveys();
+    const survey = await this.findSurveyById(idParam);
 
-    this.survey =
-      surveys.find((item) => item.id === id) ?? null;
-
-    if (!this.survey) {
+    if (!survey) {
       this.clearStateForMissingSurvey();
       return;
     }
 
+    this.survey = survey;
+
     await this.initializeLoadedSurvey();
+  }
+
+  /**
+   * Finds a survey using a route parameter.
+   *
+   * @param idParam The route parameter containing the survey ID.
+   * @returns The matching survey or null.
+   */
+  private async findSurveyById(
+    idParam: string | null,
+  ): Promise<Survey | null> {
+    const id = Number(idParam);
+    const surveys =
+      await this.surveyStorage.getAllSurveys();
+
+    return (
+      surveys.find((survey) => survey.id === id) ??
+      null
+    );
   }
 
   /**
@@ -344,10 +497,41 @@ export class SingleSurveyPage implements OnDestroy {
       return;
     }
 
+    this.resetSelectedAnswers();
+    this.restoreCompletedState();
+
+    await this.loadCurrentSurveyStats();
+
+    this.subscribeToCurrentSurveyStats();
+    this.scheduleChangeDetection();
+  }
+
+  /**
+   * Clears the current answer selections.
+   */
+  private resetSelectedAnswers(): void {
     this.selectedAnswers = {};
+  }
+
+  /**
+   * Restores the completed state of the current survey.
+   */
+  private restoreCompletedState(): void {
+    if (!this.survey) {
+      return;
+    }
 
     this.hasCompletedSurvey =
       this.voteState.hasCompleted(this.survey.id);
+  }
+
+  /**
+   * Loads statistics for the current survey.
+   */
+  private async loadCurrentSurveyStats(): Promise<void> {
+    if (!this.survey) {
+      return;
+    }
 
     const stats =
       await this.surveyStorage.getSurveyStats(
@@ -355,8 +539,6 @@ export class SingleSurveyPage implements OnDestroy {
       );
 
     this.applyStats(stats);
-    this.subscribeToCurrentSurveyStats();
-    this.scheduleChangeDetection();
   }
 
   /**
@@ -366,7 +548,9 @@ export class SingleSurveyPage implements OnDestroy {
    */
   private async saveCurrentSurveyResponse(): Promise<SurveyStats> {
     if (!this.survey) {
-      throw new Error('No survey is currently loaded.');
+      throw new Error(
+        'No survey is currently loaded.',
+      );
     }
 
     return this.surveyStorage.saveSurveyResponse(
@@ -377,9 +561,9 @@ export class SingleSurveyPage implements OnDestroy {
   }
 
   /**
-   * Toggles an answer in a multiple-choice answer collection.
+   * Toggles an answer for a multiple-choice question.
    *
-   * @param currentAnswers The currently selected answer indexes.
+   * @param currentAnswers The current answer indexes.
    * @param answerIndex The answer index to toggle.
    * @returns The updated answer indexes.
    */
@@ -401,7 +585,7 @@ export class SingleSurveyPage implements OnDestroy {
    *
    * @param currentAnswers The current answer selection.
    * @param answerIndex The selected answer index.
-   * @returns The updated single-answer selection.
+   * @returns The updated answer selection.
    */
   private toggleSingleAnswer(
     currentAnswers: number[],
@@ -413,7 +597,7 @@ export class SingleSurveyPage implements OnDestroy {
   }
 
   /**
-   * Subscribes to live statistics for the current survey.
+   * Subscribes to realtime statistics for the current survey.
    */
   private subscribeToCurrentSurveyStats(): void {
     this.unsubscribeFromSurveyStats();
@@ -426,14 +610,25 @@ export class SingleSurveyPage implements OnDestroy {
       this.surveyStorage.subscribeToSurveyStats(
         this.survey.id,
         (stats) => {
-          this.applyStats(stats);
-          this.scheduleChangeDetection();
+          this.handleSurveyStatsUpdate(stats);
         },
       );
   }
 
   /**
-   * Removes the current live survey-statistics subscription.
+   * Handles updated survey statistics.
+   *
+   * @param stats The updated statistics.
+   */
+  private handleSurveyStatsUpdate(
+    stats: SurveyStats,
+  ): void {
+    this.applyStats(stats);
+    this.scheduleChangeDetection();
+  }
+
+  /**
+   * Removes the current survey-statistics subscription.
    */
   private unsubscribeFromSurveyStats(): void {
     this.unsubscribeSurveyStats?.();
@@ -441,9 +636,9 @@ export class SingleSurveyPage implements OnDestroy {
   }
 
   /**
-   * Applies survey statistics to the local component state.
+   * Applies survey statistics to local state.
    *
-   * @param stats The survey statistics to apply.
+   * @param stats The survey statistics.
    */
   private applyStats(stats: SurveyStats): void {
     this.answerCounts = {
@@ -454,7 +649,9 @@ export class SingleSurveyPage implements OnDestroy {
   }
 
   /**
-   * Returns whether the user currently has any selected answers.
+   * Returns whether the user currently has selected answers.
+   *
+   * @returns Whether at least one answer is selected.
    */
   private hasSelections(): boolean {
     return Object.values(this.selectedAnswers).some(
@@ -463,12 +660,11 @@ export class SingleSurveyPage implements OnDestroy {
   }
 
   /**
-   * Updates whether the mobile result-toggle control should be visible.
+   * Updates whether the mobile result toggle is visible.
    */
   private updateResultsToggleVisibility(): void {
     if (typeof window === 'undefined') {
-      this.isResultsToggleVisible = false;
-      this.isResultsOpen = true;
+      this.setDesktopResultsState();
       return;
     }
 
@@ -478,6 +674,14 @@ export class SingleSurveyPage implements OnDestroy {
     if (!this.isResultsToggleVisible) {
       this.isResultsOpen = true;
     }
+  }
+
+  /**
+   * Sets the non-browser result state.
+   */
+  private setDesktopResultsState(): void {
+    this.isResultsToggleVisible = false;
+    this.isResultsOpen = true;
   }
 
   /**
@@ -500,17 +704,27 @@ export class SingleSurveyPage implements OnDestroy {
   private startCreatedOverlayTimer(): void {
     this.clearCreatedOverlayTimer();
 
-    this.createdOverlayTimeoutId = setTimeout(() => {
-      this.isCreatedOverlayVisible = false;
-      this.createdOverlayTimeoutId = null;
-
-      void this.navigateToPublishedSurvey();
-      this.scheduleChangeDetection();
-    }, 3000);
+    this.createdOverlayTimeoutId = setTimeout(
+      () => {
+        this.finishCreatedOverlay();
+      },
+      3000,
+    );
   }
 
   /**
-   * Clears the created-survey overlay timer if it is active.
+   * Finishes the created-survey overlay workflow.
+   */
+  private finishCreatedOverlay(): void {
+    this.isCreatedOverlayVisible = false;
+    this.createdOverlayTimeoutId = null;
+
+    void this.navigateToPublishedSurvey();
+    this.scheduleChangeDetection();
+  }
+
+  /**
+   * Clears the created-survey overlay timer.
    */
   private clearCreatedOverlayTimer(): void {
     if (!this.createdOverlayTimeoutId) {
@@ -522,40 +736,62 @@ export class SingleSurveyPage implements OnDestroy {
   }
 
   /**
-   * Navigates to the pending newly published survey.
+   * Navigates to the pending published survey.
    */
   private async navigateToPublishedSurvey(): Promise<void> {
     if (this.pendingPublishedSurveyId === null) {
       return;
     }
 
-    const id = this.pendingPublishedSurveyId;
+    const surveyId =
+      this.pendingPublishedSurveyId;
 
     this.pendingPublishedSurveyId = null;
 
+    await this.navigateToSurvey(surveyId);
+  }
+
+  /**
+   * Navigates to a survey detail page.
+   *
+   * @param surveyId The survey ID.
+   */
+  private async navigateToSurvey(
+    surveyId: number,
+  ): Promise<void> {
     await this.router.navigate([
       '/single-survey',
-      id,
+      surveyId,
     ]);
   }
 
   /**
-   * Displays the vote-confirmation message for a short period.
+   * Displays the vote-confirmation message.
    */
   private showVoteConfirmation(): void {
     this.clearVoteConfirmationTimer();
     this.isVoteConfirmationVisible = true;
 
-    this.voteConfirmationTimeoutId = setTimeout(() => {
-      this.isVoteConfirmationVisible = false;
-      this.voteConfirmationTimeoutId = null;
-
-      this.scheduleChangeDetection();
-    }, 2600);
+    this.voteConfirmationTimeoutId = setTimeout(
+      () => {
+        this.hideVoteConfirmation();
+      },
+      2600,
+    );
   }
 
   /**
-   * Clears the vote-confirmation timer if it is active.
+   * Hides the vote-confirmation message.
+   */
+  private hideVoteConfirmation(): void {
+    this.isVoteConfirmationVisible = false;
+    this.voteConfirmationTimeoutId = null;
+
+    this.scheduleChangeDetection();
+  }
+
+  /**
+   * Clears the vote-confirmation timer.
    */
   private clearVoteConfirmationTimer(): void {
     if (!this.voteConfirmationTimeoutId) {
@@ -570,6 +806,8 @@ export class SingleSurveyPage implements OnDestroy {
    * Schedules Angular change detection after asynchronous updates.
    */
   private scheduleChangeDetection(): void {
-    setTimeout(() => this.cdr.detectChanges());
+    setTimeout(() => {
+      this.cdr.detectChanges();
+    });
   }
 }

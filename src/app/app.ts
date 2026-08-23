@@ -4,7 +4,7 @@ import { RouterOutlet } from '@angular/router';
 /**
  * Root component of the PollApp application.
  *
- * Provides the main router outlet used to render
+ * Provides the router outlet used to display
  * the application's routed pages.
  */
 @Component({

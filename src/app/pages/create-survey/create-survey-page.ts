@@ -52,6 +52,7 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
 
   protected isCategoryDropdownOpen = false;
   protected selectedCategory = CATEGORY_PLACEHOLDER_LABEL;
+
   protected readonly minEndDate = this.getTodayIsoDate();
   protected readonly maxInputLength = MAX_INPUT_LENGTH;
   protected readonly maxDescriptionLength = MAX_DESCRIPTION_LENGTH;
@@ -62,15 +63,24 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
   protected surveyTitle = '';
   protected surveyDescription = '';
   protected endDate = '';
+
   protected showValidationErrors = false;
   protected isSurveyTitleTouched = false;
   protected isPublishSuccessVisible = false;
+
   protected questions: SurveyQuestionDraft[] = [
     this.createQuestionItem(1),
   ];
 
   private hasBodyScrollLock = false;
 
+  /**
+   * Creates the create-survey component.
+   *
+   * @param router Angular router used for navigation.
+   * @param surveyStorage Service used to persist surveys.
+   * @param document Browser document used for body scroll locking.
+   */
   constructor(
     private readonly router: Router,
     private readonly surveyStorage: SurveyStorageService,
@@ -79,6 +89,8 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
 
   /**
    * Returns whether the component is currently displayed as a dialog.
+   *
+   * @returns Whether dialog mode is active.
    */
   @HostBinding('class.create-survey-dialog-mode')
   protected get isCreateSurveyDialogMode(): boolean {
@@ -192,8 +204,6 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
   /**
    * Updates the optional survey end date.
    *
-   * The field remains empty until the user selects a date.
-   *
    * @param value The selected ISO date value.
    */
   protected updateEndDate(value: string): void {
@@ -204,9 +214,9 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
       return;
     }
 
-    this.endDate = this.isPastDate(trimmedValue)
-      ? this.minEndDate
-      : trimmedValue;
+    this.endDate = this.resolveValidEndDate(
+      trimmedValue,
+    );
   }
 
   /**
@@ -242,10 +252,7 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
   }
 
   /**
-   * Clears only the question text on the first delete action.
-   *
-   * Existing answers remain untouched. An empty question can be removed
-   * when more than one question exists.
+   * Clears or removes a survey question.
    *
    * @param questionIndex The index of the question to clear or remove.
    */
@@ -258,28 +265,16 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
       return;
     }
 
-    if (question.prompt.trim()) {
-      this.replaceQuestion(
-        questionIndex,
-        {
-          ...question,
-          prompt: '',
-        },
-      );
-      return;
-    }
-
-    if (this.questions.length === 1) {
-      return;
-    }
-
-    this.questions = this.questions.filter(
-      (_, index) => index !== questionIndex,
+    this.processQuestionDelete(
+      questionIndex,
+      question,
     );
   }
 
   /**
    * Returns whether the survey title should currently display an error.
+   *
+   * @returns Whether the title is invalid.
    */
   protected isSurveyTitleInvalid(): boolean {
     return (
@@ -293,8 +288,6 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
 
   /**
    * Publishes the survey when all required fields are valid.
-   *
-   * After publishing, a success message is shown before navigation.
    */
   protected async publishSurvey(): Promise<void> {
     this.showValidationErrors = true;
@@ -303,33 +296,20 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
       return;
     }
 
-    try {
-      const survey = await this.buildSurvey();
-
-      await this.surveyStorage.addSurvey(survey);
-      this.showPublishSuccess(survey);
-    } catch (error) {
-      console.error(
-        'Could not publish survey:',
-        error,
-      );
-    }
+    await this.publishValidSurvey();
   }
 
   /**
    * Returns the selected end date in display format.
+   *
+   * @returns The formatted date or an empty placeholder.
    */
   protected get formattedEndDate(): string {
     if (!this.endDate) {
       return '--.--.----';
     }
 
-    const [year, month, day] =
-      this.endDate.split('-');
-
-    return day && month && year
-      ? `${day}.${month}.${year}`
-      : '--.--.----';
+    return this.formatEndDate(this.endDate);
   }
 
   /**
@@ -355,16 +335,94 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
       return;
     }
 
-    const target =
-      event.target as HTMLElement | null;
-
-    if (!target?.closest('.category-dropdown')) {
+    if (this.isOutsideCategoryDropdown(event)) {
       this.isCategoryDropdownOpen = false;
     }
   }
 
   /**
-   * Shows the publish confirmation and opens the new survey.
+   * Resolves a valid end date.
+   *
+   * @param value The selected date value.
+   * @returns The selected date or today's date when the value is in the past.
+   */
+  private resolveValidEndDate(value: string): string {
+    return this.isPastDate(value)
+      ? this.minEndDate
+      : value;
+  }
+
+  /**
+   * Applies the delete behavior for an existing question.
+   *
+   * @param questionIndex The index of the question.
+   * @param question The question to clear or remove.
+   */
+  private processQuestionDelete(
+    questionIndex: number,
+    question: SurveyQuestionDraft,
+  ): void {
+    if (question.prompt.trim()) {
+      this.clearQuestionPrompt(
+        questionIndex,
+        question,
+      );
+      return;
+    }
+
+    this.removeQuestion(questionIndex);
+  }
+
+  /**
+   * Clears only the question prompt while preserving existing answers.
+   *
+   * @param questionIndex The index of the question.
+   * @param question The question whose prompt should be cleared.
+   */
+  private clearQuestionPrompt(
+    questionIndex: number,
+    question: SurveyQuestionDraft,
+  ): void {
+    this.replaceQuestion(questionIndex, {
+      ...question,
+      prompt: '',
+    });
+  }
+
+  /**
+   * Removes an empty question when another question remains.
+   *
+   * @param questionIndex The index of the question to remove.
+   */
+  private removeQuestion(questionIndex: number): void {
+    if (this.questions.length === 1) {
+      return;
+    }
+
+    this.questions = this.questions.filter(
+      (_, index) => index !== questionIndex,
+    );
+  }
+
+  /**
+   * Publishes the current valid survey.
+   */
+  private async publishValidSurvey(): Promise<void> {
+    try {
+      const survey = await this.buildSurvey();
+
+      await this.surveyStorage.addSurvey(survey);
+      this.showPublishSuccess(survey);
+    } catch (error) {
+      console.error(
+        'Could not publish survey:',
+        error,
+      );
+    }
+  }
+
+  /**
+   * Shows the publish confirmation before continuing the workflow.
    *
    * @param survey The newly published survey.
    */
@@ -372,18 +430,38 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
     this.isPublishSuccessVisible = true;
 
     setTimeout(() => {
-      this.isPublishSuccessVisible = false;
-
-      if (this.isDialog) {
-        this.surveyPublished.emit(survey);
-        return;
-      }
-
-      void this.router.navigate([
-        '/single-survey',
-        survey.id,
-      ]);
+      this.finishPublishSuccess(survey);
     }, 1400);
+  }
+
+  /**
+   * Finishes the publish workflow.
+   *
+   * @param survey The newly published survey.
+   */
+  private finishPublishSuccess(survey: Survey): void {
+    this.isPublishSuccessVisible = false;
+
+    if (this.isDialog) {
+      this.surveyPublished.emit(survey);
+      return;
+    }
+
+    void this.navigateToSurvey(survey.id);
+  }
+
+  /**
+   * Navigates to a survey detail page.
+   *
+   * @param surveyId The survey ID.
+   */
+  private async navigateToSurvey(
+    surveyId: number,
+  ): Promise<void> {
+    await this.router.navigate([
+      '/single-survey',
+      surveyId,
+    ]);
   }
 
   /**
@@ -393,23 +471,12 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
    */
   private async buildSurvey(): Promise<Survey> {
     return {
-      id:
-        await this.surveyStorage.nextSurveyId(),
-
-      category:
-        this.resolveCategory(),
-
-      title:
-        this.surveyTitle.trim(),
-
-      description:
-        this.surveyDescription.trim(),
-
-      daysLeft:
-        this.getDaysLeft(),
-
-      questions:
-        this.buildSurveyQuestions(),
+      id: await this.surveyStorage.nextSurveyId(),
+      category: this.resolveCategory(),
+      title: this.surveyTitle.trim(),
+      description: this.surveyDescription.trim(),
+      daysLeft: this.getDaysLeft(),
+      questions: this.buildSurveyQuestions(),
     };
   }
 
@@ -420,24 +487,52 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
    */
   private buildSurveyQuestions(): Survey['questions'] {
     return this.questions.map(
-      (question, index) => ({
-        id: index + 1,
-        prompt: question.prompt.trim(),
-        allowMultiple:
-          question.allowMultipleAnswers,
-        answers:
-          question.answerFieldIndexes.map(
-            (answerIndex) =>
-              question.answers[
-                answerIndex
-              ]?.trim() ?? '',
-          ),
-      }),
+      (question, index) =>
+        this.buildSurveyQuestion(
+          question,
+          index,
+        ),
+    );
+  }
+
+  /**
+   * Builds one published survey question.
+   *
+   * @param question The question draft.
+   * @param index The question index.
+   * @returns The published question.
+   */
+  private buildSurveyQuestion(
+    question: SurveyQuestionDraft,
+    index: number,
+  ): Survey['questions'][number] {
+    return {
+      id: index + 1,
+      prompt: question.prompt.trim(),
+      allowMultiple: question.allowMultipleAnswers,
+      answers: this.buildQuestionAnswers(question),
+    };
+  }
+
+  /**
+   * Builds the published answer list for a question.
+   *
+   * @param question The question draft.
+   * @returns The trimmed answers.
+   */
+  private buildQuestionAnswers(
+    question: SurveyQuestionDraft,
+  ): string[] {
+    return question.answerFieldIndexes.map(
+      (answerIndex) =>
+        question.answers[answerIndex]?.trim() ?? '',
     );
   }
 
   /**
    * Returns whether all required survey fields are valid.
+   *
+   * @returns Whether the form is valid.
    */
   private hasValidRequiredFields(): boolean {
     if (!this.surveyTitle.trim()) {
@@ -451,7 +546,7 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
   }
 
   /**
-   * Validates one survey question including all required answers.
+   * Validates one survey question.
    *
    * @param question The question draft to validate.
    * @returns Whether the question is valid.
@@ -459,13 +554,9 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
   private isQuestionValid(
     question: SurveyQuestionDraft,
   ): boolean {
-    const answers =
-      question.answerFieldIndexes.map(
-        (index) =>
-          (
-            question.answers[index] ?? ''
-          ).trim(),
-      );
+    const answers = this.getTrimmedAnswers(
+      question,
+    );
 
     return (
       question.prompt.trim().length > 0 &&
@@ -475,15 +566,28 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
   }
 
   /**
+   * Returns all trimmed answers for a question.
+   *
+   * @param question The question draft.
+   * @returns The trimmed answers.
+   */
+  private getTrimmedAnswers(
+    question: SurveyQuestionDraft,
+  ): string[] {
+    return question.answerFieldIndexes.map(
+      (index) =>
+        (question.answers[index] ?? '').trim(),
+    );
+  }
+
+  /**
    * Resolves the optional category selection.
    *
    * @returns An empty string when no category was selected.
    */
   private resolveCategory(): string {
-    return (
-      this.selectedCategory ===
+    return this.selectedCategory ===
       CATEGORY_PLACEHOLDER_LABEL
-    )
       ? ''
       : this.selectedCategory;
   }
@@ -498,20 +602,31 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
       return DEFAULT_DAYS_LEFT;
     }
 
+    return this.calculateDaysUntil(
+      this.endDate,
+    );
+  }
+
+  /**
+   * Calculates the number of days until the selected date.
+   *
+   * @param endDate The selected end date.
+   * @returns The remaining day count.
+   */
+  private calculateDaysUntil(
+    endDate: string,
+  ): number {
     const end = new Date(
-      `${this.endDate}T00:00:00`,
+      `${endDate}T00:00:00`,
     );
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = this.getStartOfToday();
 
     return Math.max(
       0,
       Math.ceil(
-        (
-          end.getTime() -
-          today.getTime()
-        ) / MS_PER_DAY,
+        (end.getTime() - today.getTime()) /
+          MS_PER_DAY,
       ),
     );
   }
@@ -527,17 +642,29 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
       `${value}T00:00:00`,
     );
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
     return (
       selectedDate.getTime() <
-      today.getTime()
+      this.getStartOfToday().getTime()
     );
   }
 
   /**
+   * Returns today's date at midnight.
+   *
+   * @returns Today's normalized Date object.
+   */
+  private getStartOfToday(): Date {
+    const today = new Date();
+
+    today.setHours(0, 0, 0, 0);
+
+    return today;
+  }
+
+  /**
    * Returns today's date in ISO format.
+   *
+   * @returns Today's ISO date string.
    */
   private getTodayIsoDate(): string {
     return this.toIsoDate(new Date());
@@ -550,9 +677,7 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
    * @returns The ISO date string.
    */
   private toIsoDate(date: Date): string {
-    const year = String(
-      date.getFullYear(),
-    );
+    const year = String(date.getFullYear());
 
     const month = String(
       date.getMonth() + 1,
@@ -566,19 +691,43 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
   }
 
   /**
+   * Formats an ISO date for display.
+   *
+   * @param value The ISO date value.
+   * @returns The formatted date.
+   */
+  private formatEndDate(value: string): string {
+    const [year, month, day] =
+      value.split('-');
+
+    return day && month && year
+      ? `${day}.${month}.${year}`
+      : '--.--.----';
+  }
+
+  /**
    * Returns the next available question ID.
+   *
+   * @returns The next question ID.
    */
   private getNextQuestionId(): number {
     if (!this.questions.length) {
       return 1;
     }
 
-    return (
-      Math.max(
-        ...this.questions.map(
-          (question) => question.id,
-        ),
-      ) + 1
+    return this.getHighestQuestionId() + 1;
+  }
+
+  /**
+   * Returns the highest existing question ID.
+   *
+   * @returns The highest question ID.
+   */
+  private getHighestQuestionId(): number {
+    return Math.max(
+      ...this.questions.map(
+        (question) => question.id,
+      ),
     );
   }
 
@@ -619,6 +768,23 @@ export class CreateSurveyPage implements OnChanges, OnDestroy {
         1: '',
       },
     };
+  }
+
+  /**
+   * Returns whether a click occurred outside the category dropdown.
+   *
+   * @param event The document click event.
+   * @returns Whether the click was outside the dropdown.
+   */
+  private isOutsideCategoryDropdown(
+    event: MouseEvent,
+  ): boolean {
+    const target =
+      event.target as HTMLElement | null;
+
+    return !target?.closest(
+      '.category-dropdown',
+    );
   }
 
   /**

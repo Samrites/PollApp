@@ -1,4 +1,9 @@
-/** Shared category list used by create and home views. */
+/**
+ * List of all supported survey categories.
+ *
+ * The categories are shared between the create-survey form
+ * and the survey filtering functionality on the home page.
+ */
 export const SURVEY_CATEGORIES = [
   'Team Activities',
   'Health & Wellness',
@@ -8,9 +13,22 @@ export const SURVEY_CATEGORIES = [
   'Technology & Innovation',
 ] as const;
 
-/** Placeholder label for the category dropdown before selection. */
-export const CATEGORY_PLACEHOLDER_LABEL = 'Choose category';
+/**
+ * Placeholder text displayed before the user selects a category.
+ *
+ * This value is also used to detect whether the category
+ * field still contains its default state.
+ */
+export const CATEGORY_PLACEHOLDER_LABEL =
+  'Choose category';
 
+/**
+ * Maps alternative or legacy category names
+ * to the canonical category labels used by the application.
+ *
+ * Keys are normalized before lookup so differences in spaces,
+ * special characters, or casing do not affect matching.
+ */
 const CATEGORY_ALIASES: Record<string, string> = {
   teamactivities: 'Team Activities',
   teamactivitys: 'Team Activities',
@@ -27,21 +45,41 @@ const CATEGORY_ALIASES: Record<string, string> = {
 };
 
 /**
- * Builds a normalized key for category matching.
- * @param value Raw category label.
- * @returns Lowercased alphanumeric key.
+ * Creates a normalized lookup key from a category label.
+ *
+ * The value is converted to lowercase and all characters
+ * except letters and numbers are removed.
+ *
+ * @param value The raw category label to normalize.
+ * @returns The normalized lowercase alphanumeric key.
  */
 function toCategoryKey(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
 }
 
 /**
- * Converts category aliases to one shared canonical label.
- * @param value Raw category label.
- * @returns Canonical category label when known, otherwise trimmed input.
+ * Converts a raw category label to the canonical application label.
+ *
+ * Known aliases are resolved through the category alias map.
+ * Unknown values are returned in trimmed form so custom
+ * or unexpected category values remain usable.
+ *
+ * @param value The raw category label to normalize.
+ * @returns The canonical category label when an alias is known,
+ * otherwise the trimmed original value.
  */
-export function normalizeSurveyCategory(value: string): string {
-  const trimmed = value.trim();
-  const alias = CATEGORY_ALIASES[toCategoryKey(trimmed)];
-  return alias ?? trimmed;
+export function normalizeSurveyCategory(
+  value: string,
+): string {
+  const trimmedValue = value.trim();
+
+  const categoryKey =
+    toCategoryKey(trimmedValue);
+
+  const normalizedCategory =
+    CATEGORY_ALIASES[categoryKey];
+
+  return normalizedCategory ?? trimmedValue;
 }

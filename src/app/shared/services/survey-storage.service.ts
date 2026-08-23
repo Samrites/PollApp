@@ -12,39 +12,92 @@ import {
 } from '../interfaces/survey.interface';
 import { SupabaseClientService } from './supabase-client.service';
 
+/**
+ * Represents a survey row as stored in the database.
+ *
+ * Uses the database naming convention for fields that differ
+ * from the application survey model.
+ */
 type DbSurveyRow = {
+  /** Unique identifier of the survey. */
   id: number;
+
+  /** Category assigned to the survey. */
   category: string;
+
+  /** Title of the survey. */
   title: string;
+
+  /** Description of the survey. */
   description: string;
+
+  /** Number of remaining days stored in the database. */
   days_left: number;
+
+  /** Questions belonging to the survey. */
   questions: SurveyQuestion[];
 };
 
+/**
+ * Represents a survey statistics row stored in the database.
+ */
 type DbStatsRow = {
+  /** ID of the survey associated with the statistics. */
   survey_id: number;
+
+  /** Total number of submitted survey responses. */
   total_responses: number;
+
+  /** Vote counts grouped by question ID. */
   counts: Record<string, number[]>;
 };
 
+/**
+ * Represents the database payload used to update survey statistics.
+ */
 type DbStatsUpdate = {
+  /** Updated total number of survey responses. */
   total_responses: number;
+
+  /** Updated vote counts grouped by question ID. */
   counts: Record<string, number[]>;
 };
 
+/**
+ * Represents the database payload used to insert survey statistics.
+ */
 type DbStatsInsert = DbStatsUpdate & {
+  /** Unique identifier of the statistics row. */
   id: number;
+
+  /** ID of the related survey. */
   survey_id: number;
 };
 
-type SurveyChangeListener = (surveys: Survey[]) => void;
-type SurveyStatsChangeListener = (stats: SurveyStats) => void;
+/**
+ * Defines a listener that receives an updated survey collection.
+ *
+ * @param surveys The updated surveys.
+ */
+type SurveyChangeListener = (
+  surveys: Survey[],
+) => void;
+
+/**
+ * Defines a listener that receives updated survey statistics.
+ *
+ * @param stats The updated survey statistics.
+ */
+type SurveyStatsChangeListener = (
+  stats: SurveyStats,
+) => void;
 
 /**
  * Handles survey persistence, result statistics, and realtime updates.
  *
- * Surveys and their result statistics are stored in Supabase.
- * Consumers can subscribe to survey and statistics changes.
+ * Surveys and their statistics are stored in Supabase.
+ * The service also manages realtime listeners for survey
+ * and statistics changes.
  */
 @Injectable({
   providedIn: 'root',
@@ -54,11 +107,19 @@ export class SurveyStorageService {
     new Set<SurveyChangeListener>();
 
   private readonly surveyStatsListeners =
-    new Map<number, Set<SurveyStatsChangeListener>>();
+    new Map<
+      number,
+      Set<SurveyStatsChangeListener>
+    >();
 
   private surveysChannel: RealtimeChannel | null = null;
   private surveyStatsChannel: RealtimeChannel | null = null;
 
+  /**
+   * Creates the survey storage service.
+   *
+   * @param supabaseService Service providing the configured Supabase client.
+   */
   constructor(
     private readonly supabaseService: SupabaseClientService,
   ) {}
@@ -75,7 +136,8 @@ export class SurveyStorageService {
       return [];
     }
 
-    const { data, error } = await this.loadSurveyRows(supabase);
+    const { data, error } =
+      await this.loadSurveyRows(supabase);
 
     if (error || !data) {
       this.logSurveyLoadError(error);
@@ -83,7 +145,10 @@ export class SurveyStorageService {
     }
 
     return data.map(
-      (row) => this.mapDbSurveyToSurvey(row as DbSurveyRow),
+      (row) =>
+        this.mapDbSurveyToSurvey(
+          row as DbSurveyRow,
+        ),
     );
   }
 
@@ -93,15 +158,22 @@ export class SurveyStorageService {
    * @param survey The survey to persist.
    */
   async addSurvey(survey: Survey): Promise<void> {
-    const supabase = this.requireSupabaseClient();
-    const payload = this.mapSurveyToDb(survey);
+    const supabase =
+      this.requireSupabaseClient();
+
+    const payload =
+      this.mapSurveyToDb(survey);
 
     const { error } = await supabase
       .from('surveys')
       .insert(payload);
 
     if (error) {
-      console.error('Could not save survey:', error);
+      console.error(
+        'Could not save survey:',
+        error,
+      );
+
       throw error;
     }
 
@@ -114,12 +186,15 @@ export class SurveyStorageService {
    * @returns The next survey ID.
    */
   async nextSurveyId(): Promise<number> {
-    const supabase = this.requireSupabaseClient();
+    const supabase =
+      this.requireSupabaseClient();
 
     const { data, error } = await supabase
       .from('surveys')
       .select('id')
-      .order('id', { ascending: false })
+      .order('id', {
+        ascending: false,
+      })
       .limit(1);
 
     if (error) {
@@ -127,6 +202,7 @@ export class SurveyStorageService {
         'Could not determine next survey id:',
         error,
       );
+
       throw error;
     }
 
@@ -142,7 +218,8 @@ export class SurveyStorageService {
   async getSurveyStats(
     surveyId: number,
   ): Promise<SurveyStats> {
-    const supabase = this.supabaseService.client;
+    const supabase =
+      this.supabaseService.client;
 
     if (!supabase) {
       return this.createEmptySurveyStats();
@@ -150,7 +227,9 @@ export class SurveyStorageService {
 
     const { data, error } = await supabase
       .from('survey_stats')
-      .select('survey_id, total_responses, counts')
+      .select(
+        'survey_id, total_responses, counts',
+      )
       .eq('survey_id', surveyId)
       .limit(1);
 
@@ -172,9 +251,13 @@ export class SurveyStorageService {
   async saveSurveyResponse(
     surveyId: number,
     questions: SurveyQuestion[],
-    selectedAnswers: Record<number, number[]>,
+    selectedAnswers: Record<
+      number,
+      number[]
+    >,
   ): Promise<SurveyStats> {
-    const current = await this.getSurveyStats(surveyId);
+    const current =
+      await this.getSurveyStats(surveyId);
 
     const next = this.applySurveyVote(
       current,
@@ -225,7 +308,9 @@ export class SurveyStorageService {
     listener: SurveyStatsChangeListener,
   ): () => void {
     const listeners =
-      this.getOrCreateStatsListeners(surveyId);
+      this.getOrCreateStatsListeners(
+        surveyId,
+      );
 
     listeners.add(listener);
 
@@ -260,8 +345,12 @@ export class SurveyStorageService {
       .select(
         'id, category, title, description, days_left, questions',
       )
-      .order('days_left', { ascending: true })
-      .order('id', { ascending: true });
+      .order('days_left', {
+        ascending: true,
+      })
+      .order('id', {
+        ascending: true,
+      });
   }
 
   /**
@@ -269,13 +358,17 @@ export class SurveyStorageService {
    *
    * @param error The returned database error.
    */
-  private logSurveyLoadError(error: unknown): void {
-    if (error) {
-      console.error(
-        'Could not load surveys:',
-        error,
-      );
+  private logSurveyLoadError(
+    error: unknown,
+  ): void {
+    if (!error) {
+      return;
     }
+
+    console.error(
+      'Could not load surveys:',
+      error,
+    );
   }
 
   /**
@@ -287,7 +380,8 @@ export class SurveyStorageService {
   private requireSupabaseClient(): NonNullable<
     SupabaseClientService['client']
   > {
-    const supabase = this.supabaseService.client;
+    const supabase =
+      this.supabaseService.client;
 
     if (!supabase) {
       throw new Error(
@@ -311,7 +405,9 @@ export class SurveyStorageService {
       return 1;
     }
 
-    const currentId = Number(data[0].id);
+    const currentId = Number(
+      data[0].id,
+    );
 
     return Number.isFinite(currentId)
       ? currentId + 1
@@ -319,12 +415,12 @@ export class SurveyStorageService {
   }
 
   /**
-   * Converts a survey statistics query result to the app model.
+   * Converts a survey statistics query result to the application model.
    *
    * @param surveyId The requested survey ID.
    * @param data The returned database rows.
    * @param error The returned database error.
-   * @returns The resolved statistics.
+   * @returns The resolved survey statistics.
    */
   private resolveSurveyStatsResult(
     surveyId: number,
@@ -336,6 +432,7 @@ export class SurveyStorageService {
         `Could not load survey stats for survey ${surveyId}:`,
         error,
       );
+
       return this.createEmptySurveyStats();
     }
 
@@ -349,19 +446,21 @@ export class SurveyStorageService {
   }
 
   /**
-   * Throws when updated survey statistics could not be persisted.
+   * Ensures that updated survey statistics are stored successfully.
    *
    * @param surveyId The survey ID.
    * @param stats The statistics to persist.
+   * @throws When the statistics could not be stored.
    */
   private async ensureSurveyStatsPersisted(
     surveyId: number,
     stats: SurveyStats,
   ): Promise<void> {
-    const saved = await this.persistSurveyStats(
-      surveyId,
-      stats,
-    );
+    const saved =
+      await this.persistSurveyStats(
+        surveyId,
+        stats,
+      );
 
     if (!saved) {
       throw new Error(
@@ -381,16 +480,18 @@ export class SurveyStorageService {
     surveyId: number,
     stats: SurveyStats,
   ): Promise<boolean> {
-    const supabase = this.supabaseService.client;
+    const supabase =
+      this.supabaseService.client;
 
     if (!supabase) {
       return false;
     }
 
-    const updated = await this.updateSurveyStats(
-      surveyId,
-      stats,
-    );
+    const updated =
+      await this.updateSurveyStats(
+        surveyId,
+        stats,
+      );
 
     if (updated !== null) {
       return updated;
@@ -407,20 +508,23 @@ export class SurveyStorageService {
    *
    * @param surveyId The survey ID.
    * @param stats The statistics to update.
-   * @returns True if updated, false on error, or null if no row exists.
+   * @returns True if updated, false on error, or null when no row exists.
    */
   private async updateSurveyStats(
     surveyId: number,
     stats: SurveyStats,
   ): Promise<boolean | null> {
-    const supabase = this.supabaseService.client;
+    const supabase =
+      this.supabaseService.client;
 
     if (!supabase) {
       return false;
     }
 
     const payload =
-      this.mapSurveyStatsToDbUpdate(stats);
+      this.mapSurveyStatsToDbUpdate(
+        stats,
+      );
 
     const { data, error } = await supabase
       .from('survey_stats')
@@ -433,10 +537,13 @@ export class SurveyStorageService {
         surveyId,
         error,
       );
+
       return false;
     }
 
-    return data?.length ? true : null;
+    return data?.length
+      ? true
+      : null;
   }
 
   /**
@@ -450,7 +557,8 @@ export class SurveyStorageService {
     surveyId: number,
     stats: SurveyStats,
   ): Promise<boolean> {
-    const supabase = this.supabaseService.client;
+    const supabase =
+      this.supabaseService.client;
 
     if (!supabase) {
       return false;
@@ -516,14 +624,17 @@ export class SurveyStorageService {
     surveyId: number,
     stats: SurveyStats,
   ): Promise<boolean> {
-    const supabase = this.supabaseService.client;
+    const supabase =
+      this.supabaseService.client;
 
     if (!supabase) {
       return false;
     }
 
     const payload =
-      this.mapSurveyStatsToDbUpdate(stats);
+      this.mapSurveyStatsToDbUpdate(
+        stats,
+      );
 
     const { error } = await supabase
       .from('survey_stats')
@@ -573,9 +684,10 @@ export class SurveyStorageService {
       id: Date.now(),
       survey_id: surveyId,
       total_responses: stats.total,
-      counts: this.convertStatsCountsToDb(
-        stats.counts,
-      ),
+      counts:
+        this.convertStatsCountsToDb(
+          stats.counts,
+        ),
     };
   }
 
@@ -587,10 +699,13 @@ export class SurveyStorageService {
       return;
     }
 
-    const surveys = await this.getAllSurveys();
+    const surveys =
+      await this.getAllSurveys();
 
     this.surveyListeners.forEach(
-      (listener) => listener(surveys),
+      (listener) => {
+        listener(surveys);
+      },
     );
   }
 
@@ -603,18 +718,22 @@ export class SurveyStorageService {
     surveyId: number,
   ): Promise<void> {
     const listeners =
-      this.surveyStatsListeners.get(surveyId);
+      this.surveyStatsListeners.get(
+        surveyId,
+      );
 
     if (!listeners?.size) {
       return;
     }
 
     const stats =
-      await this.getSurveyStats(surveyId);
+      await this.getSurveyStats(
+        surveyId,
+      );
 
-    listeners.forEach(
-      (listener) => listener(stats),
-    );
+    listeners.forEach((listener) => {
+      listener(stats);
+    });
   }
 
   /**
@@ -628,15 +747,17 @@ export class SurveyStorageService {
     stats: SurveyStats,
   ): void {
     const listeners =
-      this.surveyStatsListeners.get(surveyId);
+      this.surveyStatsListeners.get(
+        surveyId,
+      );
 
-    listeners?.forEach(
-      (listener) => listener(stats),
-    );
+    listeners?.forEach((listener) => {
+      listener(stats);
+    });
   }
 
   /**
-   * Refreshes statistics for every survey with listeners.
+   * Refreshes statistics for every survey that has active listeners.
    */
   private async notifyAllSurveyStatsListeners(): Promise<void> {
     const ids = [
@@ -644,9 +765,10 @@ export class SurveyStorageService {
     ];
 
     await Promise.all(
-      ids.map(
-        (surveyId) =>
-          this.notifySurveyStatsListeners(surveyId),
+      ids.map((surveyId) =>
+        this.notifySurveyStatsListeners(
+          surveyId,
+        ),
       ),
     );
   }
@@ -655,7 +777,8 @@ export class SurveyStorageService {
    * Creates the realtime channel for survey changes when needed.
    */
   private ensureSurveyRealtimeChannel(): void {
-    const supabase = this.supabaseService.client;
+    const supabase =
+      this.supabaseService.client;
 
     if (
       !supabase ||
@@ -666,7 +789,9 @@ export class SurveyStorageService {
     }
 
     this.surveysChannel = supabase
-      .channel('surveys-changes-channel')
+      .channel(
+        'surveys-changes-channel',
+      )
       .on(
         'postgres_changes',
         this.createSurveyChangesConfig(),
@@ -678,7 +803,9 @@ export class SurveyStorageService {
   }
 
   /**
-   * Returns the realtime configuration for survey changes.
+   * Creates the realtime configuration used for survey changes.
+   *
+   * @returns The Supabase realtime configuration.
    */
   private createSurveyChangesConfig() {
     return {
@@ -692,7 +819,8 @@ export class SurveyStorageService {
    * Removes the survey realtime channel when no listener remains.
    */
   private maybeRemoveSurveyRealtimeChannel(): void {
-    const supabase = this.supabaseService.client;
+    const supabase =
+      this.supabaseService.client;
 
     if (
       !supabase ||
@@ -713,7 +841,8 @@ export class SurveyStorageService {
    * Creates the realtime channel for survey statistics when required.
    */
   private ensureSurveyStatsRealtimeChannel(): void {
-    const supabase = this.supabaseService.client;
+    const supabase =
+      this.supabaseService.client;
 
     if (
       !supabase ||
@@ -724,7 +853,9 @@ export class SurveyStorageService {
     }
 
     this.surveyStatsChannel = supabase
-      .channel('survey-stats-changes-channel')
+      .channel(
+        'survey-stats-changes-channel',
+      )
       .on(
         'postgres_changes',
         this.createStatsChangesConfig(),
@@ -738,7 +869,9 @@ export class SurveyStorageService {
   }
 
   /**
-   * Returns the realtime configuration for statistics changes.
+   * Creates the realtime configuration used for statistics changes.
+   *
+   * @returns The Supabase realtime configuration.
    */
   private createStatsChangesConfig() {
     return {
@@ -782,13 +915,16 @@ export class SurveyStorageService {
     listener: SurveyStatsChangeListener,
   ): void {
     const listeners =
-      this.surveyStatsListeners.get(surveyId);
+      this.surveyStatsListeners.get(
+        surveyId,
+      );
 
     if (!listeners) {
       return;
     }
 
     listeners.delete(listener);
+
     this.removeEmptyStatsListenerSet(
       surveyId,
       listeners,
@@ -798,27 +934,32 @@ export class SurveyStorageService {
   }
 
   /**
-   * Deletes an empty listener collection.
+   * Deletes an empty statistics listener collection.
    *
    * @param surveyId The survey ID.
    * @param listeners The listener collection.
    */
   private removeEmptyStatsListenerSet(
     surveyId: number,
-    listeners: Set<SurveyStatsChangeListener>,
+    listeners: Set<
+      SurveyStatsChangeListener
+    >,
   ): void {
-    if (!listeners.size) {
-      this.surveyStatsListeners.delete(
-        surveyId,
-      );
+    if (listeners.size) {
+      return;
     }
+
+    this.surveyStatsListeners.delete(
+      surveyId,
+    );
   }
 
   /**
    * Removes the statistics realtime channel when it is no longer needed.
    */
   private maybeRemoveStatsRealtimeChannel(): void {
-    const supabase = this.supabaseService.client;
+    const supabase =
+      this.supabaseService.client;
 
     if (
       !supabase ||
@@ -845,7 +986,9 @@ export class SurveyStorageService {
     surveyId: number,
   ): Set<SurveyStatsChangeListener> {
     return (
-      this.surveyStatsListeners.get(surveyId) ??
+      this.surveyStatsListeners.get(
+        surveyId,
+      ) ??
       new Set<SurveyStatsChangeListener>()
     );
   }
@@ -861,15 +1004,17 @@ export class SurveyStorageService {
       Record<string, unknown>
     >,
   ): number | null {
-    const newValue = this.readPayloadValue(
-      payload.new,
-      'survey_id',
-    );
+    const newValue =
+      this.readPayloadValue(
+        payload.new,
+        'survey_id',
+      );
 
-    const oldValue = this.readPayloadValue(
-      payload.old,
-      'survey_id',
-    );
+    const oldValue =
+      this.readPayloadValue(
+        payload.old,
+        'survey_id',
+      );
 
     return this.parseNumericId(
       newValue ?? oldValue,
@@ -895,7 +1040,10 @@ export class SurveyStorageService {
     }
 
     return (
-      payload as Record<string, unknown>
+      payload as Record<
+        string,
+        unknown
+      >
     )[key];
   }
 
@@ -938,7 +1086,9 @@ export class SurveyStorageService {
     return {
       id: row.id,
       category:
-        normalizeSurveyCategory(row.category),
+        normalizeSurveyCategory(
+          row.category,
+        ),
       title: row.title,
       description: row.description,
       daysLeft: row.days_left,
@@ -978,10 +1128,12 @@ export class SurveyStorageService {
     row: DbStatsRow,
   ): SurveyStats {
     return {
-      total: row.total_responses ?? 0,
-      counts: this.normalizeStatsCounts(
-        row.counts ?? {},
-      ),
+      total:
+        row.total_responses ?? 0,
+      counts:
+        this.normalizeStatsCounts(
+          row.counts ?? {},
+        ),
     };
   }
 
@@ -996,9 +1148,10 @@ export class SurveyStorageService {
   ): DbStatsUpdate {
     return {
       total_responses: stats.total,
-      counts: this.convertStatsCountsToDb(
-        stats.counts,
-      ),
+      counts:
+        this.convertStatsCountsToDb(
+          stats.counts,
+        ),
     };
   }
 
@@ -1009,7 +1162,10 @@ export class SurveyStorageService {
    * @returns Counts formatted for the database.
    */
   private convertStatsCountsToDb(
-    counts: Record<number, number[]>,
+    counts: Record<
+      number,
+      number[]
+    >,
   ): Record<string, number[]> {
     return Object.fromEntries(
       Object.entries(counts).map(
@@ -1027,21 +1183,28 @@ export class SurveyStorageService {
    * @param current The current statistics.
    * @param questions The survey questions.
    * @param selectedAnswers The selected answers.
-   * @returns Updated statistics.
+   * @returns The updated statistics.
    */
   private applySurveyVote(
     current: SurveyStats,
     questions: SurveyQuestion[],
-    selectedAnswers: Record<number, number[]>,
+    selectedAnswers: Record<
+      number,
+      number[]
+    >,
   ): SurveyStats {
     const counts =
-      this.cloneStatsCounts(current.counts);
+      this.cloneStatsCounts(
+        current.counts,
+      );
 
     questions.forEach((question) => {
       this.applyQuestionVote(
         counts,
         question,
-        selectedAnswers[question.id] ?? [],
+        selectedAnswers[
+          question.id
+        ] ?? [],
       );
     });
 
@@ -1058,7 +1221,10 @@ export class SurveyStorageService {
    * @returns A mutable cloned count object.
    */
   private cloneStatsCounts(
-    counts: Record<number, number[]>,
+    counts: Record<
+      number,
+      number[]
+    >,
   ): Record<number, number[]> {
     return Object.fromEntries(
       Object.entries(counts).map(
@@ -1078,7 +1244,10 @@ export class SurveyStorageService {
    * @param selected The selected answer indexes.
    */
   private applyQuestionVote(
-    counts: Record<number, number[]>,
+    counts: Record<
+      number,
+      number[]
+    >,
     question: SurveyQuestion,
     selected: number[],
   ): void {
@@ -1088,12 +1257,14 @@ export class SurveyStorageService {
         question.answers.length,
       );
 
-    selected.forEach((answerIndex) => {
-      this.incrementAnswerCount(
-        values,
-        answerIndex,
-      );
-    });
+    selected.forEach(
+      (answerIndex) => {
+        this.incrementAnswerCount(
+          values,
+          answerIndex,
+        );
+      },
+    );
 
     counts[question.id] = values;
   }
@@ -1125,11 +1296,13 @@ export class SurveyStorageService {
     answerIndex: number,
   ): void {
     if (
-      answerIndex >= 0 &&
-      answerIndex < values.length
+      answerIndex < 0 ||
+      answerIndex >= values.length
     ) {
-      values[answerIndex] += 1;
+      return;
     }
+
+    values[answerIndex] += 1;
   }
 
   /**
@@ -1139,7 +1312,10 @@ export class SurveyStorageService {
    * @returns Normalized application counts.
    */
   private normalizeStatsCounts(
-    counts: Record<string, number[]>,
+    counts: Record<
+      string,
+      number[]
+    >,
   ): Record<number, number[]> {
     return Object.fromEntries(
       Object.entries(counts).map(
